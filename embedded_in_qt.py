@@ -37,15 +37,16 @@ class Visualization(HasTraits):
     def get_mayavi(self):
         return self.scene.engine
 
+    def data_func(self, x, y):
+        return (x + y) / 2
+
     def make_data(self):
         """Make some test numpy test data and return it in a Surface."""
-        def f(x, y):
-            """Some test function."""
-            return numpy.sin(x*y)/(x*y)
+        array = numpy.fromfunction(self.data_func, (256, 256))
 
-        x = numpy.arange(-7., 7.05, 0.1)
-        y = numpy.arange(-5., 5.05, 0.05)
-        s = mlab.SurfRegular(x, y, f)
+        x = numpy.arange(0, array.shape[0], 1)
+        y = numpy.arange(0, array.shape[1], 1)
+        s = mlab.SurfRegular(x, y, array)
         return s.data
 
     def add_data(self, data):
