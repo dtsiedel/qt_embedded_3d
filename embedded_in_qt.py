@@ -23,6 +23,9 @@ from mayavi.core.ui.api import MayaviScene, MlabSceneModel, \
 
 import numpy as np
 import math
+import functools
+from matplotlib.colors import Normalize
+from matplotlib.cm import get_cmap
 
 from mayavi.scripts import mayavi2
 from tvtk.tools import mlab
@@ -49,11 +52,15 @@ class Visualization(HasTraits):
             return np.nan
         return (x + y) / 2
 
-    def make_data(self):
-        """Make some test numpy test data and return it in a Surface."""
+    @functools.lru_cache(maxsize=128)
+    def numpy_data(self):
+        """Make some test numpy data."""
         vectorized = np.vectorize(self.data_func)
         array = np.fromfunction(vectorized, (self.side_length, self.side_length))
+        return array
 
+    def vtk_data(self, array):
+        """Convert ndarray to a Surface."""
         x = np.arange(0, array.shape[0], 1)
         y = np.arange(0, array.shape[1], 1)
         s = mlab.SurfRegular(x, y, array)
@@ -78,7 +85,8 @@ class Visualization(HasTraits):
 
     def render(self):
         mv = self.get_mayavi()
-        d = self.make_data()
+        array = self.numpy_data()
+        d = self.vtk_data(array)
         self.add_data(d)
         self.surf_regular()
 
@@ -95,8 +103,6 @@ class Visualization(HasTraits):
                      height=250, width=300, show_label=False), resizable=True)
 
 
-################################################################################
-# The QWidget containing the visualization, this is pure PyQt4 code.
 class MayaviQWidget(QtGui.QWidget):
     def __init__(self, parent=None):
         QtGui.QWidget.__init__(self, parent)
@@ -112,6 +118,29 @@ class MayaviQWidget(QtGui.QWidget):
         self.ui.setParent(self)
 
 
+class NotImageWidget(QtGui.QWidget):
+    def __init__(self, data=None, parent=None):
+        QtGui.QWidget.__init__(self, parent)
+
+        norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
+        cmap = get_cmap('jet')
+        normed = np.array([norm(x) for x in data])
+        mapped = 255*np.array([cmap(x) for x in normed])
+        no_a = mapped[:,:,:-1]
+
+        height, width, _ = no_a.shape
+        bytes_per_line = 3 * width
+        no_a = no_a.astype(np.uint8)
+        image = QtGui.QImage(no_a, width, height, bytes_per_line,
+                             QtGui.QImage.Format_RGB888)
+        label = QtGui.QLabel()
+        label.setPixmap(QtGui.QPixmap.fromImage(image))
+
+        layout = QtGui.QHBoxLayout()
+        layout.addWidget(label)
+        self.setLayout(layout)
+
+
 if __name__ == "__main__":
     # Don't create a new QApplication, it would unhook the Events
     # set by Traits on the existing QApplication. Simply use the
@@ -119,11 +148,12 @@ if __name__ == "__main__":
     app = QtGui.QApplication.instance()
     container = QtGui.QWidget()
     mayavi_widget = MayaviQWidget(container)
+    image = NotImageWidget(mayavi_widget.visualization.numpy_data())
     container.setWindowTitle("Embedding Mayavi in a PyQt Application")
     # define a "complex" layout to test the behaviour
     layout = QtGui.QHBoxLayout(container)
 
-    layout.addWidget(QtGui.QLabel('2D image goes here'))
+    layout.addWidget(image)
     layout.addWidget(mayavi_widget)
     container.show()
     window = QtGui.QMainWindow()
