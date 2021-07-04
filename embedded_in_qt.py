@@ -21,7 +21,8 @@ from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, \
         SceneEditor
 
-import numpy
+import numpy as np
+import math
 
 from mayavi.scripts import mayavi2
 from tvtk.tools import mlab
@@ -33,19 +34,28 @@ from mayavi.modules.surface import Surface
 
 class Visualization(HasTraits):
     scene = Instance(MlabSceneModel, ())
+    side_length = 256
 
     def get_mayavi(self):
         return self.scene.engine
 
     def data_func(self, x, y):
+        center = self.side_length / 2
+        x_diff = x - center
+        y_diff = y - center
+        distance = math.sqrt(x_diff**2 + y_diff**2)
+
+        if distance > center:
+            return np.nan
         return (x + y) / 2
 
     def make_data(self):
         """Make some test numpy test data and return it in a Surface."""
-        array = numpy.fromfunction(self.data_func, (256, 256))
+        vectorized = np.vectorize(self.data_func)
+        array = np.fromfunction(vectorized, (self.side_length, self.side_length))
 
-        x = numpy.arange(0, array.shape[0], 1)
-        y = numpy.arange(0, array.shape[1], 1)
+        x = np.arange(0, array.shape[0], 1)
+        y = np.arange(0, array.shape[1], 1)
         s = mlab.SurfRegular(x, y, array)
         return s.data
 
