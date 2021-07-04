@@ -1,0 +1,4 @@
+vtk==8.1.2
+mayavi==4.7.3
+ipython
+PyQt5
