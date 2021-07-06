@@ -1,4 +1,3 @@
-
 # First, and before importing any Enthought packages, set the ETS_TOOLKIT
 # environment variable to qt4, to tell Traits that we will use Qt.
 # This is true even when using qt5 (as we are)
@@ -36,34 +35,37 @@ from mayavi.modules.surface import Surface
 
 
 class Visualization(HasTraits):
+    # Not sure what this class has going on that messes with its constructor,
+    # but I couldn't figure out how to override it so I just sideload all the
+    # args in.
     scene = Instance(MlabSceneModel, ())
-    side_length = 256
+
+    def set_image(self, image):
+        # All images must be square, because I said so
+        self.side_length = image.shape[0]
+        center = self.side_length / 2
+        for x in range(self.side_length):
+            for y in range(self.side_length):
+                x_diff = x - center
+                y_diff = y - center
+                distance = math.sqrt(x_diff**2 + y_diff**2)
+
+                if distance > center:
+                    image[x, y] = np.nan
+        self.image = image
 
     def get_mayavi(self):
         return self.scene.engine
 
-    def data_func(self, x, y):
-        center = self.side_length / 2
-        x_diff = x - center
-        y_diff = y - center
-        distance = math.sqrt(x_diff**2 + y_diff**2)
-
-        if distance > center:
-            return np.nan
-        return (x + y) / 2
-
-    @functools.lru_cache(maxsize=128)
     def numpy_data(self):
-        """Make some test numpy data."""
-        vectorized = np.vectorize(self.data_func)
-        array = np.fromfunction(vectorized, (self.side_length, self.side_length))
-        return array
+        return self.image
 
     def vtk_data(self, array):
         """Convert ndarray to a Surface."""
         x = np.arange(0, array.shape[0], 1)
         y = np.arange(0, array.shape[1], 1)
-        s = mlab.SurfRegular(x, y, array)
+        # scale z axis by side length
+        s = mlab.SurfRegular(x, y, self.side_length * array)
         return s.data
 
     def add_data(self, data):
@@ -104,12 +106,13 @@ class Visualization(HasTraits):
 
 
 class MayaviQWidget(QtGui.QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, image, parent=None):
         QtGui.QWidget.__init__(self, parent)
         layout = QtGui.QVBoxLayout(self)
         layout.setContentsMargins(0,0,0,0)
         layout.setSpacing(0)
         self.visualization = Visualization()
+        self.visualization.set_image(image)
 
         # The edit_traits call will generate the widget to embed.
         self.ui = self.visualization.edit_traits(parent=self,
@@ -122,10 +125,8 @@ class NotImageWidget(QtGui.QWidget):
     def __init__(self, data=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
 
-        norm = Normalize(vmin=np.nanmin(data), vmax=np.nanmax(data))
         cmap = get_cmap('jet')
-        normed = np.array([norm(x) for x in data])
-        mapped = 255*np.array([cmap(x) for x in normed])
+        mapped = 255*np.array([cmap(x) for x in data])
         no_a = mapped[:,:,:-1]
 
         height, width, _ = no_a.shape
@@ -147,7 +148,12 @@ if __name__ == "__main__":
     # '.instance()' method to retrieve the existing one.
     app = QtGui.QApplication.instance()
     container = QtGui.QWidget()
-    mayavi_widget = MayaviQWidget(container)
+    input_image = np.load('amp_fit.npy')
+    while len(input_image.shape) > 2:
+        input_image = input_image[0]
+    norm = Normalize(vmin=np.nanmin(input_image), vmax=np.nanmax(input_image))
+    input_image = np.array([norm(x) for x in input_image])
+    mayavi_widget = MayaviQWidget(input_image, container)
     image = NotImageWidget(mayavi_widget.visualization.numpy_data())
     container.setWindowTitle("Embedding Mayavi in a PyQt Application")
     # define a "complex" layout to test the behaviour
