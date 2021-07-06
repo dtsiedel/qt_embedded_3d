@@ -20,6 +20,7 @@ from traitsui.api import View, Item
 from mayavi.core.ui.api import MayaviScene, MlabSceneModel, \
         SceneEditor
 
+import argparse
 import numpy as np
 import math
 import functools
@@ -40,18 +41,20 @@ class Visualization(HasTraits):
     # args in.
     scene = Instance(MlabSceneModel, ())
 
-    def set_image(self, image):
+    def set_image(self, image, circle):
         # All images must be square, because I said so
         self.side_length = image.shape[0]
-        center = self.side_length / 2
-        for x in range(self.side_length):
-            for y in range(self.side_length):
-                x_diff = x - center
-                y_diff = y - center
-                distance = math.sqrt(x_diff**2 + y_diff**2)
 
-                if distance > center:
-                    image[x, y] = np.nan
+        if circle is not None:
+            center = self.side_length / 2
+            for x in range(self.side_length):
+                for y in range(self.side_length):
+                    x_diff = x - center
+                    y_diff = y - center
+                    distance = math.sqrt(x_diff**2 + y_diff**2)
+
+                    if distance > circle:
+                        image[x, y] = np.nan
         self.image = image
 
     def get_mayavi(self):
@@ -106,13 +109,13 @@ class Visualization(HasTraits):
 
 
 class MayaviQWidget(QtGui.QWidget):
-    def __init__(self, image, parent=None):
+    def __init__(self, image, circle, parent=None):
         QtGui.QWidget.__init__(self, parent)
         layout = QtGui.QVBoxLayout(self)
         layout.setContentsMargins(0,0,0,0)
         layout.setSpacing(0)
         self.visualization = Visualization()
-        self.visualization.set_image(image)
+        self.visualization.set_image(image, circle)
 
         # The edit_traits call will generate the widget to embed.
         self.ui = self.visualization.edit_traits(parent=self,
@@ -143,17 +146,21 @@ class NotImageWidget(QtGui.QWidget):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-file')
+    parser.add_argument('-circle', nargs='?', type=int, default=None)
+    args = parser.parse_args()
     # Don't create a new QApplication, it would unhook the Events
     # set by Traits on the existing QApplication. Simply use the
     # '.instance()' method to retrieve the existing one.
     app = QtGui.QApplication.instance()
     container = QtGui.QWidget()
-    input_image = np.load('amp_fit.npy')
+    input_image = np.load(args.file)
     while len(input_image.shape) > 2:
         input_image = input_image[0]
     norm = Normalize(vmin=np.nanmin(input_image), vmax=np.nanmax(input_image))
     input_image = np.array([norm(x) for x in input_image])
-    mayavi_widget = MayaviQWidget(input_image, container)
+    mayavi_widget = MayaviQWidget(input_image, args.circle, container)
     image = NotImageWidget(mayavi_widget.visualization.numpy_data())
     container.setWindowTitle("Embedding Mayavi in a PyQt Application")
     # define a "complex" layout to test the behaviour
