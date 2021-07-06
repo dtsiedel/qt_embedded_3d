@@ -1,3 +1,5 @@
 env
 *.npy
+*.mov
+*.mp4
 .DS_Store
